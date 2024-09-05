@@ -50,6 +50,14 @@ set(LOCAL_SOURCE
 set(VULKAN_SHADERS vulkan_shaders/frag.glsl vulkan_shaders/vert.glsl)
 
 if(ANDROID)
+    # 确保路径设置正确
+    set(LOADER_PICO_FILE "${CMAKE_CURRENT_LIST_DIR}/openxr_loader_pico.cmake")
+
+    if (EXISTS ${LOADER_PICO_FILE})
+        include(${LOADER_PICO_FILE})
+    else ()
+        message(FATAL_ERROR "Could not find openxr_loader_pico.cmake at ${LOADER_PICO_FILE}")
+    endif ()
     add_library(
         hello_xr MODULE
         ${LOCAL_SOURCE}
@@ -99,8 +107,11 @@ endif()
 set_target_properties(hello_xr PROPERTIES FOLDER ${SAMPLES_FOLDER})
 source_group("Headers" FILES ${LOCAL_HEADERS})
 source_group("Shaders" FILES ${VULKAN_SHADERS})
-
+if (ANDROID)
+    target_link_libraries(hello_xr PRIVATE openxr_loader_pico)
+else ()
 target_link_libraries(hello_xr PRIVATE OpenXR::openxr_loader)
+endif ()
 
 compile_glsl(run_hello_xr_glsl_compiles ${VULKAN_SHADERS})
 
@@ -113,13 +124,18 @@ target_include_directories(
         "${PROJECT_SOURCE_DIR}/src/common"
         "${PROJECT_SOURCE_DIR}/src/external/metal-cpp"
         "${PROJECT_SOURCE_DIR}/src/tests/hello_xr/vulkan_shaders"
+        "${PROJECT_SOURCE_DIR}/src/tests/hello_xr/thirdpartys"
         # for helper headers
         "${PROJECT_SOURCE_DIR}/external/include"
         # For including compiled shaders
         "${CMAKE_CURRENT_BINARY_DIR}"
 )
 
-target_link_libraries(hello_xr PRIVATE OpenXR::openxr_loader)
+if (ANDROID)
+    target_link_libraries(hello_xr PRIVATE openxr_loader_pico)
+else ()
+    target_link_libraries(hello_xr PRIVATE OpenXR::openxr_loader)
+endif ()
 
 if(GLSLANG_VALIDATOR AND NOT GLSLC_COMMAND)
     target_compile_definitions(hello_xr PRIVATE USE_GLSLANGVALIDATOR)

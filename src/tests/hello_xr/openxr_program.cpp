@@ -187,6 +187,18 @@ struct OpenXrProgram : IOpenXrProgram {
         std::transform(graphicsExtensions.begin(), graphicsExtensions.end(), std::back_inserter(extensions),
                        [](const std::string& ext) { return ext.c_str(); });
 
+
+        const std::vector <std::string> wanted_extensions{
+                XR_FB_FOVEATION_EXTENSION_NAME,
+                XR_FB_SWAPCHAIN_UPDATE_STATE_EXTENSION_NAME,
+                XR_FB_FOVEATION_CONFIGURATION_EXTENSION_NAME
+        };
+        for (auto &extension: wanted_extensions) {
+            extensions.push_back(extension.c_str());
+        }
+        
+        
+
         XrInstanceCreateInfo createInfo{XR_TYPE_INSTANCE_CREATE_INFO};
         createInfo.next = m_platformPlugin->GetInstanceCreateExtension();
         createInfo.enabledExtensionCount = (uint32_t)extensions.size();
@@ -195,8 +207,8 @@ struct OpenXrProgram : IOpenXrProgram {
         strcpy(createInfo.applicationInfo.applicationName, "HelloXR");
 
         // Current version is 1.1.x, but hello_xr only requires 1.0.x
-        createInfo.applicationInfo.apiVersion = XR_API_VERSION_1_0;
-
+        //createInfo.applicationInfo.apiVersion = XR_API_VERSION_1_0;
+        createInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
         CHECK_XRCMD(xrCreateInstance(&createInfo, &m_instance));
     }
 
@@ -657,6 +669,15 @@ struct OpenXrProgram : IOpenXrProgram {
                 Swapchain swapchain;
                 swapchain.width = swapchainCreateInfo.width;
                 swapchain.height = swapchainCreateInfo.height;
+
+                XrSwapchainCreateInfoFoveationFB swapChainFoveationCreateInfo;
+                memset(&swapChainFoveationCreateInfo, 0,
+                       sizeof(swapChainFoveationCreateInfo));
+                swapChainFoveationCreateInfo.type =
+                        XR_TYPE_SWAPCHAIN_CREATE_INFO_FOVEATION_FB;
+                swapchainCreateInfo.next = &swapChainFoveationCreateInfo;
+                
+                
                 CHECK_XRCMD(xrCreateSwapchain(m_session, &swapchainCreateInfo, &swapchain.handle));
 
                 m_swapchains.push_back(swapchain);
@@ -670,6 +691,66 @@ struct OpenXrProgram : IOpenXrProgram {
 
                 m_swapchainImages.insert(std::make_pair(swapchain.handle, std::move(swapchainImages)));
             }
+
+       
+            PFN_xrCreateFoveationProfileFB pfnCreateFoveationProfileFB;
+            CHECK_XRCMD(xrGetInstanceProcAddr(
+                    m_instance, "xrCreateFoveationProfileFB",
+                    (PFN_xrVoidFunction*)(&pfnCreateFoveationProfileFB)));
+
+           
+            PFN_xrDestroyFoveationProfileFB pfnDestroyFoveationProfileFB;
+           CHECK_XRCMD(xrGetInstanceProcAddr(
+                   m_instance, "xrDestroyFoveationProfileFB",
+                    (PFN_xrVoidFunction*)(&pfnDestroyFoveationProfileFB)));
+
+          
+
+            PFN_xrUpdateSwapchainFB pfnUpdateSwapchainFB;
+            CHECK_XRCMD(
+                    xrGetInstanceProcAddr(m_instance, "xrUpdateSwapchainFB",
+                                          (PFN_xrVoidFunction*)(&pfnUpdateSwapchainFB)));
+           
+
+            XrFoveationLevelFB level = XR_FOVEATION_LEVEL_MEDIUM_FB;
+            float verticalOffset = 0;
+            XrFoveationDynamicFB dynamic = XR_FOVEATION_DYNAMIC_DISABLED_FB;
+
+            for (int eye = 0; eye < viewCount; eye++) {
+                XrFoveationLevelProfileCreateInfoFB levelProfileCreateInfo;
+                memset(&levelProfileCreateInfo, 0, sizeof(levelProfileCreateInfo));
+                levelProfileCreateInfo.type =
+                        XR_TYPE_FOVEATION_LEVEL_PROFILE_CREATE_INFO_FB;
+                levelProfileCreateInfo.level = level;
+                levelProfileCreateInfo.verticalOffset = verticalOffset;
+                levelProfileCreateInfo.dynamic = dynamic;
+
+                XrFoveationProfileCreateInfoFB profileCreateInfo;
+                memset(&profileCreateInfo, 0, sizeof(profileCreateInfo));
+                profileCreateInfo.type = XR_TYPE_FOVEATION_PROFILE_CREATE_INFO_FB;
+                profileCreateInfo.next = &levelProfileCreateInfo;
+
+                XrFoveationProfileFB foveationProfile;
+                 CHECK_XRCMD(pfnCreateFoveationProfileFB(
+                        m_session, &profileCreateInfo, &foveationProfile));
+
+               
+                XrSwapchainStateFoveationFB foveationUpdateState;
+                memset(&foveationUpdateState, 0, sizeof(foveationUpdateState));
+                foveationUpdateState.type = XR_TYPE_SWAPCHAIN_STATE_FOVEATION_FB;
+                foveationUpdateState.profile = foveationProfile;
+
+                // picoffr TODO ensure this swapchain handle is correct
+                CHECK_XRCMD(pfnUpdateSwapchainFB(
+                        m_swapchains[eye].handle,
+                        (XrSwapchainStateBaseHeaderFB*)(&foveationUpdateState)));
+               
+
+                CHECK_XRCMD(pfnDestroyFoveationProfileFB(foveationProfile));
+                
+            }
+            
+            
         }
     }
 
